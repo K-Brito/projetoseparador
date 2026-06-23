@@ -105,3 +105,24 @@ if __name__ == "__main__":
     caminho = caminho.strip().strip('"').strip("'")
 
     separar_audio(caminho)
+
+
+
+    Banco de dados:
+
+    create database separador;
+use separador;
+
+create table processamentos (
+	id INT AUTO_INCREMENT PRIMARY KEY,
+    caminho VARCHAR(255) NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    mensagem TEXT,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+alter table  processamentos add nome_musica VARCHAR(255) NOT NULL;
+
+ALTER TABLE processamentos MODIFY COLUMN caminho VARCHAR(500) NULL;
+
+SELECT * FROM processamentos;
