@@ -2,7 +2,7 @@
 
 📌 Descrição
 
-O Separador de Áudio IA é um sistema desenvolvido em Python que utiliza Inteligência Artificial para separar voz e instrumental de músicas. O projeto também permite alterar o tom e a velocidade do áudio e registra os processamentos em um banco de dados MySQL.
+O Separador de Áudio IA é um sistema desenvolvido em Python que utiliza Inteligência Artificial para separar voz e instrumental de músicas. O projeto  permite masterizar áudios, alterar o tom e a velocidade, como também registra os processamentos em um banco de dados MySQL.
 
 🚀 Funcionalidades
 
@@ -22,7 +22,8 @@ O Separador de Áudio IA é um sistema desenvolvido em Python que utiliza Inteli
 - 🤖 Demucs
 - 🎧 FFmpeg
 - 🔥 Torch
-
+- 📚 PedalBoard
+  
 🎯 Objetivo
 
 Desenvolver uma aplicação de processamento de áudio com Inteligência Artificial como projeto acadêmico.
