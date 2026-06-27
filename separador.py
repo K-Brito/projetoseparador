@@ -1,5 +1,3 @@
-# projetoseparador
-
 import os
 import re
 import subprocess
@@ -14,6 +12,15 @@ try:
 except ImportError:
     mysql = None
 
+# Tenta importar Pedalboard para a Masterização Inteligente
+try:
+    from pedalboard import Pedalboard, Compressor, HighpassFilter, Gain, Limiter, HighShelfFilter, LowShelfFilter
+    from pedalboard.io import AudioFile
+    import numpy as np
+    PEDALBOARD_DISPONIVEL = True
+except ImportError:
+    PEDALBOARD_DISPONIVEL = False
+
 USUARIO_CADASTRADO = "admin"
 SENHA_CADASTRADA = "1234"
 
@@ -25,6 +32,15 @@ COR_TEXTO = "#ffffff"
 COR_TEXTO_MUTED = "#71717a"
 COR_VERDE = "#4ade80"
 COR_BORDA = "#27272a"
+
+# --- CRIAÇÃO AUTOMÁTICA DAS PASTAS DE SAÍDA ---
+DIRETORIO_BASE = os.path.dirname(os.path.abspath(__file__))
+PASTA_MODIFICADOS = os.path.join(DIRETORIO_BASE, "Modificados")
+PASTA_MASTERIZADOS = os.path.join(DIRETORIO_BASE, "Masterizados")
+
+os.makedirs(PASTA_MODIFICADOS, exist_ok=True)
+os.makedirs(PASTA_MASTERIZADOS, exist_ok=True)
+
 
 def conectar_banco():
     if mysql is None:
@@ -91,17 +107,16 @@ def separar_audio(caminho_da_musica):
         )
 
         atualizar_progresso(0)
-        percentual_atual = 0
         
         for linha in processo.stdout:
             print(linha, end="")
             if "100%" in linha:
-                percentual_atual = 100
+                atualizar_progresso(100)
             else:
                 match = re.search(r"(\d{1,3})%", linha)
                 if match:
                     percentual_atual = min(int(match.group(1)), 99)
-            atualizar_progresso(percentual_atual)
+                    atualizar_progresso(percentual_atual)
 
         retorno = processo.wait()
 
@@ -192,12 +207,12 @@ def abrir_janela_efeitos():
 
         nome_completo = os.path.basename(caminho_original)
         nome, ext = os.path.splitext(nome_completo)
-        diretorio_do_codigo = os.path.dirname(os.path.abspath(__file__))
         
+        # Salvando dentro da pasta "Modificados"
         contador = 1
         while True:
             nome_saida = f"{contador}_{nome}_modificado{ext}"
-            arquivo_saida = os.path.join(diretorio_do_codigo, nome_saida)
+            arquivo_saida = os.path.join(PASTA_MODIFICADOS, nome_saida)
             if not os.path.exists(arquivo_saida):
                 break
             contador += 1
@@ -217,7 +232,7 @@ def abrir_janela_efeitos():
                 btn_salvar.config(state="disabled", text="Processando...")
                 processo = subprocess.run(comando_ffmpeg, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 if processo.returncode == 0:
-                    messagebox.showinfo("Sucesso", f"Salvo como:\n{nome_saida}")
+                    messagebox.showinfo("Sucesso", f"Salvo na pasta Modificados como:\n{nome_saida}")
                     janela_efeitos.destroy()
                 else:
                     messagebox.showerror("Erro", f"Erro no FFmpeg:\n{processo.stderr}")
@@ -231,8 +246,119 @@ def abrir_janela_efeitos():
     btn_salvar = tk.Button(janela_efeitos, text="Salvar Novo Áudio", width=22, bg=COR_VERDE, fg="#000000", font=("Arial", 10, "bold"), command=aplicar_efeitos, relief="flat")
     btn_salvar.pack(pady=20)
 
+
 # =====================================================================
-# TELA PRINCIPAL REESTILIZADA CONFORME A IMAGEM
+# SERVIÇO: MASTERIZAÇÃO INTELIGENTE (EQ ADAPTATIVA JAZZ vs STREAMING)
+# =====================================================================
+def abrir_janela_masterizacao():
+    if not PEDALBOARD_DISPONIVEL:
+        messagebox.showerror("Dependência Ausente", "Para masterizar, instale as bibliotecas:\npip install pedalboard numpy")
+        return
+
+    caminho_original = caminho_var.get().strip().strip('"').strip("'")
+    if not caminho_original or not os.path.exists(caminho_original):
+        messagebox.showerror("Erro", "Selecione um arquivo de áudio válido na tela principal primeiro.")
+        return
+
+    janela_master = tk.Toplevel(janela)
+    janela_master.title("Masterização Inteligente por IA")
+    janela_master.geometry("400x320")
+    janela_master.configure(bg=COR_BG_PRINCIPAL)
+    janela_master.resizable(False, False)
+    janela_master.transient(janela)
+    janela_master.grab_set()
+
+    tk.Label(janela_master, text="Masterização Inteligente", font=("Arial", 14, "bold"), bg=COR_BG_PRINCIPAL, fg=COR_TEXTO).pack(pady=15)
+    tk.Label(janela_master, text="Escolha a intensidade da masterização:", bg=COR_BG_PRINCIPAL, fg=COR_TEXTO_MUTED).pack(pady=5)
+
+    intensidade_var = tk.StringVar(value="Comercial (Streaming)")
+    combo_estilo = ttk.Combobox(janela_master, textvariable=intensidade_var, values=["Suave (Jazz/Acústico)", "Comercial (Streaming)", "Intensa (Club/Eletro)"], state="readonly", width=25)
+    combo_estilo.pack(pady=10)
+
+    lbl_status_master = tk.Label(janela_master, text="Pronto para processar", font=("Arial", 9, "italic"), bg=COR_BG_PRINCIPAL, fg=COR_TEXTO_MUTED)
+    lbl_status_master.pack(pady=10)
+
+    def executar_masterizacao():
+        estilo = intensidade_var.get()
+        nome_completo = os.path.basename(caminho_original)
+        nome, ext = os.path.splitext(nome_completo)
+
+        # Salvando dentro da pasta "Masterizados" como "X_Master_nome"
+        contador = 1
+        while True:
+            nome_saida = f"{contador}_Master_{nome}{ext}"
+            arquivo_saida = os.path.join(PASTA_MASTERIZADOS, nome_saida)
+            if not os.path.exists(arquivo_saida):
+                break
+            contador += 1
+
+        btn_disparar.config(state="disabled", text="Masterizando...")
+        lbl_status_master.config(text="Analisando dinâmica e aplicando DSP...", fg=COR_VERDE)
+
+        def rodar_dsp():
+            try:
+                # 1. Carrega o áudio original
+                with AudioFile(caminho_original) as f:
+                    audio_dados = f.read(f.frames)
+                    sr = f.samplerate
+
+                rms_volume = np.sqrt(np.mean(audio_dados**2))
+                
+                # --- CONFIGURAÇÃO REVISADA DOS FILTROS ---
+                if estilo == "Suave (Jazz/Acústico)":
+                    thresh = -15.0 if rms_volume > 0.1 else -12.0
+                    comp_ratio = 2.5
+                    ganho_compensacao = 1.5   
+                    graves_db = 4.0            # Destaca e dá presença aos graves
+                    brilho_db = -5.0           # Abafa e atenua os agudos agressivos
+                    limite_teto = -1.0
+                elif estilo == "Comercial (Streaming)":
+                    thresh = -20.0 if rms_volume > 0.1 else -16.0
+                    comp_ratio = 4.0          
+                    ganho_compensacao = 4.5   
+                    graves_db = -3.0           # Atenua os sub-graves embolados para limpar o mix
+                    brilho_db = 3.5            # Realça e traz bastante presença aos agudos/ar
+                    limite_teto = -0.3
+                else:  # Intensa (Club/Eletro)
+                    thresh = -24.0 if rms_volume > 0.1 else -20.0
+                    comp_ratio = 6.0          
+                    ganho_compensacao = 6.0   
+                    graves_db = 2.0            
+                    brilho_db = 3.0           
+                    limite_teto = -0.1
+
+                # 2. Constrói a cadeia profissional aplicando a equalização solicitada
+                board = Pedalboard([
+                    HighpassFilter(cutoff_frequency_hz=30), 
+                    Compressor(threshold_db=thresh, ratio=comp_ratio, attack_ms=15, release_ms=150), 
+                    LowShelfFilter(cutoff_frequency_hz=200 if estilo == "Suave (Jazz/Acústico)" else 250, gain_db=graves_db),
+                    HighShelfFilter(cutoff_frequency_hz=5000 if estilo == "Suave (Jazz/Acústico)" else 7000, gain_db=brilho_db), 
+                    Gain(gain_db=ganho_compensacao), 
+                    Limiter(threshold_db=limite_teto, release_ms=80) 
+                ])
+
+                # 3. Processa e Salva o Arquivo Finalizado
+                audio_processado = board(audio_dados, sr)
+                
+                with AudioFile(arquivo_saida, 'w', sr, audio_processado.shape[0]) as f:
+                    f.write(audio_processado)
+
+                messagebox.showinfo("Sucesso!", f"Música masterizada salva na pasta Masterizados:\n{nome_saida}")
+                janela_master.destroy()
+
+            except Exception as ex:
+                messagebox.showerror("Erro", f"Erro ao masterizar o arquivo:\n{ex}")
+                btn_disparar.config(state="normal", text="✨ Iniciar Masterização")
+                lbl_status_master.config(text="Falha no processamento", fg="red")
+
+        threading.Thread(target=rodar_dsp, daemon=True).start()
+
+    btn_disparar = tk.Button(janela_master, text="✨ Iniciar Masterização", width=22, bg=COR_VERDE, fg="#000000", font=("Arial", 10, "bold"), command=executar_masterizacao, relief="flat", cursor="hand2")
+    btn_disparar.pack(pady=15)
+
+
+# =====================================================================
+# TELA PRINCIPAL
 # =====================================================================
 def montar_tela_principal():
     global lbl_selecionar, progresso_var, rotulo_progresso, btn_processar
@@ -250,7 +376,6 @@ def montar_tela_principal():
     tk.Label(card_esquerdo, text="Remova os vocais de qualquer música", font=("Arial", 15, "bold"), bg=COR_BG_CARD, fg=COR_TEXTO).pack(anchor="w", padx=25, pady=(25, 2))
     tk.Label(card_esquerdo, text="Ajudaremos você a fazer uma versão HQ karaoke!", font=("Arial", 10), bg=COR_BG_CARD, fg=COR_TEXTO_MUTED).pack(anchor="w", padx=25, pady=(0, 25))
     
-    # Dropzone / Área de Clique Central (Prevenção de bugs visuais de fundo nativo)
     btn_dropzone = tk.Button(
         card_esquerdo, bg=COR_BG_DROPZONE, activebackground=COR_BG_DROPZONE, bd=0,
         highlightbackground=COR_BORDA, highlightthickness=1, command=escolher_arquivo, relief="flat"
@@ -269,7 +394,6 @@ def montar_tela_principal():
     lbl_icone.bind("<Button-1>", lambda e: escolher_arquivo())
     lbl_selecionar.bind("<Button-1>", lambda e: escolher_arquivo())
 
-    # Efeito Hover premium e fixo para todos os componentes do Dropzone
     COR_HOVER = "#1c1c21"
 
     def ao_entrar(event):
@@ -288,7 +412,6 @@ def montar_tela_principal():
         componente.bind("<Enter>", ao_entrar)
         componente.bind("<Leave>", ao_sair)
 
-    # Botão manual para disparar processamento
     btn_processar = tk.Button(
         card_esquerdo, text="✨ Começar Processamento", bg=COR_VERDE, fg="#000000",
         font=("Arial", 11, "bold"), activebackground="#3cd073", activeforeground="#000000",
@@ -296,7 +419,6 @@ def montar_tela_principal():
     )
     btn_processar.pack(fill="x", padx=25, pady=(0, 15), ipady=8)
 
-    # Barra de Progresso
     progresso_var = tk.IntVar(value=0)
     style = ttk.Style()
     style.theme_use('default')
@@ -316,13 +438,14 @@ def montar_tela_principal():
     tk.Label(card_direito, text="Outros Serviços", font=("Arial", 13, "bold"), bg=COR_BG_CARD, fg=COR_TEXTO).pack(anchor="w", padx=20, pady=(25, 15))
     
     btn_servico1 = tk.Button(
-        card_direito, text="🎤  Remova Vocais de Uma Música", bg=COR_BG_CARD, fg=COR_TEXTO, 
-        activebackground="#1f1f23", activeforeground=COR_TEXTO, bd=0, anchor="w", font=("Arial", 10), cursor="hand2"
+        card_direito, text="🪄  Masterização IA Inteligente", bg=COR_BG_CARD, fg=COR_TEXTO_MUTED, 
+        activebackground="#1f1f23", activeforeground=COR_TEXTO, bd=0, anchor="w", font=("Arial", 10), 
+        command=abrir_janela_masterizacao, cursor="hand2"
     )
     btn_servico1.pack(fill="x", padx=10, pady=4, ipady=6)
     
     btn_servico2 = tk.Button(
-        card_direito, text="🎛️  Alterar tom or Tempo", bg=COR_BG_CARD, fg=COR_TEXTO_MUTED, 
+        card_direito, text="🎛️  Alterar Tom ou Tempo", bg=COR_BG_CARD, fg=COR_TEXTO_MUTED, 
         activebackground="#1f1f23", activeforeground=COR_TEXTO, bd=0, anchor="w", font=("Arial", 10), 
         command=abrir_janela_efeitos, cursor="hand2"
     )
@@ -355,27 +478,7 @@ entry_senha.pack(pady=(0, 5))
 btn_mostrar_senha = tk.Button(frame_login, text="Mostrar senha", font=("Arial", 8), bg=COR_BG_CARD, fg=COR_TEXTO_MUTED, bd=0, command=alternar_senha, activebackground=COR_BG_CARD, activeforeground=COR_TEXTO)
 btn_mostrar_senha.pack(pady=(0, 15))
 
-tk.Button(frame_login, text="Entrar", width=25, bg=COR_VERDE, fg="#000000", font=("Arial", 10, "bold"), command=verificar_login, relief="flat").pack(pady=5)
+tk.Button(frame_login, text="Entrar", width=25, bg=COR_VERDE, fg="#000000", font=("Arial", 10, "bold"), command=verificar_login, relief="flat")
+frame_login.winfo_children()[-1].pack(pady=5)
 
 janela.mainloop()
-
-
-
-    Banco de dados:
-
-    create database separador;
-use separador;
-
-create table processamentos (
-	id INT AUTO_INCREMENT PRIMARY KEY,
-    caminho VARCHAR(255) NOT NULL,
-    status VARCHAR(50) NOT NULL,
-    mensagem TEXT,
-    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-alter table  processamentos add nome_musica VARCHAR(255) NOT NULL;
-
-ALTER TABLE processamentos MODIFY COLUMN caminho VARCHAR(500) NULL;
-
-SELECT * FROM processamentos;
