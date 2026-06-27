@@ -211,7 +211,7 @@ def abrir_janela_efeitos():
         # Salvando dentro da pasta "Modificados"
         contador = 1
         while True:
-            nome_saida = f"{contador}_{nome}_modificado{ext}"
+            nome_saida = f"{contador}_modificado_{nome}{ext}"
             arquivo_saida = os.path.join(PASTA_MODIFICADOS, nome_saida)
             if not os.path.exists(arquivo_saida):
                 break
@@ -227,18 +227,27 @@ def abrir_janela_efeitos():
             arquivo_saida
         ]
 
+        # BANCO DE DADOS: Salva o início do processo de efeito
+        id_db = salvar_status_inicial(caminho_original)
+
         def rodar_ffmpeg():
             try:
                 btn_salvar.config(state="disabled", text="Processando...")
                 processo = subprocess.run(comando_ffmpeg, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 if processo.returncode == 0:
                     messagebox.showinfo("Sucesso", f"Salvo na pasta Modificados como:\n{nome_saida}")
+                    # BANCO DE DADOS: Atualiza para concluído
+                    atualizar_status_final(id_db, "Concluído (Efeitos)")
                     janela_efeitos.destroy()
                 else:
                     messagebox.showerror("Erro", f"Erro no FFmpeg:\n{processo.stderr}")
+                    # BANCO DE DADOS: Atualiza para erro
+                    atualizar_status_final(id_db, "Erro (Efeitos)")
                     btn_salvar.config(state="normal", text="Salvar Novo Áudio")
             except FileNotFoundError:
                 messagebox.showerror("Erro", "FFmpeg não foi encontrado no sistema.")
+                # BANCO DE DADOS: Atualiza para erro
+                atualizar_status_final(id_db, "Erro (FFmpeg Ausente)")
                 btn_salvar.config(state="normal", text="Salvar Novo Áudio")
 
         threading.Thread(target=rodar_ffmpeg, daemon=True).start()
@@ -295,6 +304,9 @@ def abrir_janela_masterizacao():
         btn_disparar.config(state="disabled", text="Masterizando...")
         lbl_status_master.config(text="Analisando dinâmica e aplicando DSP...", fg=COR_VERDE)
 
+        # BANCO DE DADOS: Salva o início da masterização
+        id_db = salvar_status_inicial(caminho_original)
+
         def rodar_dsp():
             try:
                 # 1. Carrega o áudio original
@@ -344,10 +356,15 @@ def abrir_janela_masterizacao():
                     f.write(audio_processado)
 
                 messagebox.showinfo("Sucesso!", f"Música masterizada salva na pasta Masterizados:\n{nome_saida}")
+                
+                # BANCO DE DADOS: Atualiza para concluído
+                atualizar_status_final(id_db, f"Concluído (Master: {estilo})")
                 janela_master.destroy()
 
             except Exception as ex:
                 messagebox.showerror("Erro", f"Erro ao masterizar o arquivo:\n{ex}")
+                # BANCO DE DADOS: Atualiza para erro
+                atualizar_status_final(id_db, "Erro (Masterização)")
                 btn_disparar.config(state="normal", text="✨ Iniciar Masterização")
                 lbl_status_master.config(text="Falha no processamento", fg="red")
 
@@ -438,14 +455,14 @@ def montar_tela_principal():
     tk.Label(card_direito, text="Outros Serviços", font=("Arial", 13, "bold"), bg=COR_BG_CARD, fg=COR_TEXTO).pack(anchor="w", padx=20, pady=(25, 15))
     
     btn_servico1 = tk.Button(
-        card_direito, text="🪄  Masterização IA Inteligente", bg=COR_BG_CARD, fg=COR_TEXTO_MUTED, 
+        card_direito, text="🪄   Masterização IA Inteligente", bg=COR_BG_CARD, fg=COR_TEXTO_MUTED, 
         activebackground="#1f1f23", activeforeground=COR_TEXTO, bd=0, anchor="w", font=("Arial", 10), 
         command=abrir_janela_masterizacao, cursor="hand2"
     )
     btn_servico1.pack(fill="x", padx=10, pady=4, ipady=6)
     
     btn_servico2 = tk.Button(
-        card_direito, text="🎛️  Alterar Tom ou Tempo", bg=COR_BG_CARD, fg=COR_TEXTO_MUTED, 
+        card_direito, text="🎛️ Alterar Tom ou Tempo", bg=COR_BG_CARD, fg=COR_TEXTO_MUTED, 
         activebackground="#1f1f23", activeforeground=COR_TEXTO, bd=0, anchor="w", font=("Arial", 10), 
         command=abrir_janela_efeitos, cursor="hand2"
     )
@@ -482,3 +499,26 @@ tk.Button(frame_login, text="Entrar", width=25, bg=COR_VERDE, fg="#000000", font
 frame_login.winfo_children()[-1].pack(pady=5)
 
 janela.mainloop()
+
+
+
+Banco de dados:
+
+create database separador;
+use separador;
+
+create table processamentos (
+	id INT AUTO_INCREMENT PRIMARY KEY,
+    caminho VARCHAR(255) NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    mensagem TEXT,
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+alter table  processamentos add nome_musica VARCHAR(255) NOT NULL;
+
+alter table processamentos add data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+ALTER TABLE processamentos MODIFY COLUMN caminho VARCHAR(500) NULL;
+
+SELECT * FROM processamentos;
