@@ -21,6 +21,7 @@ O Separador de Áudio IA é um sistema desenvolvido em Python que utiliza Inteli
 - 🗄️ MySQL
 - 🤖 Demucs
 - 🎧 FFmpeg
+- 🔥 Torch
 
 🎯 Objetivo
 
