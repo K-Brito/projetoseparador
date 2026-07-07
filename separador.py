@@ -499,26 +499,3 @@ tk.Button(frame_login, text="Entrar", width=25, bg=COR_VERDE, fg="#000000", font
 frame_login.winfo_children()[-1].pack(pady=5)
 
 janela.mainloop()
-
-
-
-Banco de dados:
-
-create database separador;
-use separador;
-
-create table processamentos (
-	id INT AUTO_INCREMENT PRIMARY KEY,
-    caminho VARCHAR(255) NOT NULL,
-    status VARCHAR(50) NOT NULL,
-    mensagem TEXT,
-    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-alter table  processamentos add nome_musica VARCHAR(255) NOT NULL;
-
-alter table processamentos add data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-
-ALTER TABLE processamentos MODIFY COLUMN caminho VARCHAR(500) NULL;
-
-SELECT * FROM processamentos;
